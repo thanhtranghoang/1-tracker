@@ -744,8 +744,10 @@
         console.error('❌ Chart.js not loaded, retrying...');
         setTimeout(() => updateTrendChart(), 500);  // Retry after 500ms
         return;
-    }{
-            const last24h = trackingData.filter(d => {
+    }
+    // Then the rest of the code continues normally
+    const last24h = trackingData.filter(d => {
+
                 const age = Date.now() - new Date(d.timestamp).getTime();
                 return age < 24 * 60 * 60 * 1000;
             }).sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
