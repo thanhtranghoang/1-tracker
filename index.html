@@ -372,13 +372,29 @@
         .video-link a:hover {
             background: rgba(59, 130, 246, 0.2);
         }
+        
+        .auth-badge {
+            display: inline-block;
+            padding: 4px 12px;
+            background: rgba(59, 130, 246, 0.1);
+            color: var(--color-secondary);
+            border-radius: 20px;
+            font-size: 0.85em;
+            font-weight: 600;
+            margin-left: auto;
+        }
     </style>
 </head>
 <body>
     <header>
         <div class="container">
-            <h1>📊 1% Tracker</h1>
-            <p class="subtitle">Track voting statistics with live updates</p>
+            <div style="display: flex; align-items: center; justify-content: space-between;">
+                <div>
+                    <h1>📊 1% Tracker</h1>
+                    <p class="subtitle">Track voting statistics with cloud sync</p>
+                </div>
+                <div class="auth-badge" id="authStatus">🔄 Authenticating...</div>
+            </div>
         </div>
     </header>
 
@@ -488,11 +504,10 @@
     </div>
 
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-    <script src="https://www.gstatic.com/firebasejs/12.7.0/firebase-app.js"></script>
-    <script src="https://www.gstatic.com/firebasejs/12.7.0/firebase-firestore.js"></script>
     <script type="module">
-        // ✅ YOUR Firebase Config
+        // ✅ YOUR Firebase Config - WITH ANONYMOUS AUTH
         import { initializeApp } from "https://www.gstatic.com/firebasejs/12.7.0/firebase-app.js";
+        import { getAuth, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/12.7.0/firebase-auth.js";
         import { getFirestore, collection, doc, getDoc, setDoc, deleteDoc } from "https://www.gstatic.com/firebasejs/12.7.0/firebase-firestore.js";
 
         const firebaseConfig = {
@@ -507,6 +522,7 @@
         
         // Initialize Firebase
         const app = initializeApp(firebaseConfig);
+        const auth = getAuth(app);
         const db = getFirestore(app);
         
         const API_BASE_URL = 'https://www.googleapis.com/youtube/v3/videos';
@@ -519,7 +535,28 @@
             apiKey: ''
         };
         let trendChart = null;
-        let userId = 'user_' + Date.now(); // Unique user ID
+        let userId = null;
+
+        // ✅ AUTHENTICATE ANONYMOUSLY FIRST
+        async function authenticateUser() {
+            try {
+                onAuthStateChanged(auth, async (user) => {
+                    if (user) {
+                        userId = user.uid;
+                        document.getElementById('authStatus').textContent = '✅ Synced';
+                        document.getElementById('authStatus').style.background = 'rgba(16, 185, 129, 0.1)';
+                        document.getElementById('authStatus').style.color = 'var(--color-success)';
+                        console.log('User authenticated:', userId);
+                        await init();
+                    } else {
+                        await signInAnonymously(auth);
+                    }
+                });
+            } catch (error) {
+                console.error('Auth error:', error);
+                document.getElementById('authStatus').textContent = '❌ Offline Mode';
+            }
+        }
 
         async function init() {
             await loadSettings();
@@ -533,10 +570,12 @@
         
         // Firebase: Load data từ cloud
         async function loadTrackingData() {
+            if (!userId) return;
             try {
                 const docRef = doc(db, 'users', userId, 'tracking', 'snapshots');
                 const docSnap = await getDoc(docRef);
-                trackingData = docSnap.exists() ? docSnap.data().data || [] : [];
+                trackingData = docSnap.exists() ? (docSnap.data().data || []) : [];
+                console.log('Loaded tracking data:', trackingData.length, 'records');
             } catch(e) {
                 console.error('Load failed:', e);
                 trackingData = [];
@@ -545,12 +584,17 @@
         
         // Firebase: Save data lên cloud
         async function saveTrackingDataToCloud() {
+            if (!userId) {
+                console.error('User not authenticated');
+                return;
+            }
             try {
                 const docRef = doc(db, 'users', userId, 'tracking', 'snapshots');
                 await setDoc(docRef, {
                     data: trackingData,
                     lastUpdate: new Date().toISOString()
                 });
+                console.log('Saved to Firebase:', trackingData.length, 'records');
             } catch(e) {
                 console.error('Save failed:', e);
             }
@@ -635,7 +679,7 @@
                 displayStats(stats);
                 saveSnapshot(stats);
                 updateVideoLink(videoId);
-                showMessage('✅ Data fetched successfully!', 'success');
+                showMessage('✅ Data fetched & synced to cloud!', 'success');
 
             } catch (error) {
                 showMessage(`❌ Error: ${error.message}`, 'error');
@@ -722,7 +766,7 @@
                         <td>${formatNumber(entry.likes)}</td>
                         <td>${formatNumber(entry.comments)}</td>
                         <td><span class="badge ${changeClass}">${changeText}</span></td>
-                        <td><span class="badge success">✅ Recorded</span></td>
+                        <td><span class="badge success">✅ Synced</span></td>
                     </tr>
                 `;
                 tbody.insertAdjacentHTML('beforeend', row);
@@ -800,7 +844,6 @@
             const toggle = document.getElementById('autoTrackToggle');
             toggle.classList.toggle('active');
             settings.autoTrack = toggle.classList.contains('active');
-            localStorage.setItem('yVoteSettings', JSON.stringify(settings));
 
             if (settings.autoTrack) {
                 startAutoTrack();
@@ -817,7 +860,7 @@
                 fetchVideoStats();
             }, interval);
 
-            showMessage(`🤖 Auto-tracking started (every ${settings.interval} minutes) - Auto-saving enabled!`, 'success');
+            showMessage(`🤖 Auto-tracking started (every ${settings.interval} minutes)`, 'success');
         }
 
         function stopAutoTrack() {
@@ -845,22 +888,28 @@
             settings.interval = interval;
             settings.apiKey = apiKey;
             
+            if (!userId) {
+                showMessage('❌ Not authenticated', 'error');
+                return;
+            }
+
             try {
                 const docRef = doc(db, 'users', userId, 'settings', 'config');
                 await setDoc(docRef, settings);
+                showMessage('✅ Settings saved to cloud!', 'success');
             } catch(e) {
                 console.error('Settings save failed:', e);
+                showMessage('❌ Failed to save settings', 'error');
             }
 
             if (settings.autoTrack) {
                 stopAutoTrack();
                 startAutoTrack();
             }
-
-            showMessage('✅ Settings saved to cloud!', 'success');
         }
 
         async function loadSettings() {
+            if (!userId) return;
             try {
                 const docRef = doc(db, 'users', userId, 'settings', 'config');
                 const docSnap = await getDoc(docRef);
@@ -920,8 +969,10 @@
             if (confirm('⚠️ Are you sure you want to delete all tracking data? This cannot be undone!')) {
                 trackingData = [];
                 try {
-                    const docRef = doc(db, 'users', userId, 'tracking', 'snapshots');
-                    await deleteDoc(docRef);
+                    if (userId) {
+                        const docRef = doc(db, 'users', userId, 'tracking', 'snapshots');
+                        await deleteDoc(docRef);
+                    }
                 } catch(e) {
                     console.error('Delete failed:', e);
                 }
@@ -942,8 +993,8 @@
             if (e.key === 'Enter') updateSettings();
         });
 
-        init();
-        updateTrendChart();
+        // Start authentication immediately
+        authenticateUser();
     </script>
 </body>
 </html>
