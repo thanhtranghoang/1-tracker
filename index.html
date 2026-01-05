@@ -747,7 +747,7 @@
 
             sorted.forEach((entry, idx) => {
                 const prev = idx > 0 ? sorted[idx - 1] : null;
-                const change = prev ? entry.views - prev.views : 0;
+                const change = prev ? prev.views - entry.views : 0;
                 const changeClass = change > 0 ? "success" : change < 0 ? "danger" : "";
                 const changeText = change > 0 ? `+${formatNumber(change)}` : formatNumber(change);
 
