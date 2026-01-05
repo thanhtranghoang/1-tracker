@@ -411,7 +411,7 @@
             <div class="header-content">
                 <div>
                     <h1>1% Tracker</h1>
-                    <p class="subtitle">Track voting statistics with cloud sync</p>
+                    <p class="subtitle">Real-time sync across all browsers 🔄</p>
                 </div>
                 <div class="auth-badge" id="authStatus">🔄 Syncing...</div>
             </div>
@@ -527,7 +527,7 @@
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
-        import { getDatabase, ref, onValue, push, set, remove } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-database.js";
+        import { getDatabase, ref, onValue, set, remove } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-database.js";
         import { getAuth, signInAnonymously } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
 
         const firebaseConfig = {
@@ -546,28 +546,23 @@
         const db = getDatabase(app);
 
         const APIBASEURL = "https://www.googleapis.com/youtube/v3/videos";
+        const DEVICE_ID = "shared-1percent-tracker";
 
         let trackingData = [];
         let autoTrackInterval = null;
         let settings = { autoTrack: false, interval: 5, apiKey: "" };
         let trendChart = null;
-        let deviceId = null;
         let userId = null;
 
-        function getOrCreateDeviceId() {
-            // Use FIXED shared Device ID - all browsers/devices use SAME ID
-            // This makes ALL tracking data sync across Chrome, Edge, Firefox, etc.
-            return "shared-1percent-tracker";
-        }
-
         function setupRealtimeSync() {
-            const trackerRef = ref(db, `trackers/${deviceId}`);
+            // Setup PERSISTENT listener that updates whenever Firebase changes
+            const trackerRef = ref(db, `trackers/${DEVICE_ID}`);
             
             onValue(trackerRef, (snapshot) => {
                 if (snapshot.exists()) {
                     const data = snapshot.val();
                     trackingData = data.records || [];
-                    console.log("✅ Synced data from Firebase Realtime DB:", trackingData.length, "records");
+                    console.log("✅ Real-time update from Firebase:", trackingData.length, "records");
                     updateHistoryTable();
                     updateQuickStats();
                     updateTrendChart();
@@ -578,17 +573,15 @@
         }
 
         async function saveToFirebase() {
-            if (!deviceId) return;
-            
             try {
-                const trackerRef = ref(db, `trackers/${deviceId}`);
+                const trackerRef = ref(db, `trackers/${DEVICE_ID}`);
                 await set(trackerRef, {
                     records: trackingData,
                     lastUpdate: new Date().toISOString(),
-                    deviceId: deviceId,
+                    deviceId: DEVICE_ID,
                     userId: userId
                 });
-                console.log("✅ Saved to Firebase Realtime DB:", trackingData.length, "records");
+                console.log("✅ Saved to Firebase:", trackingData.length, "records");
             } catch (e) {
                 console.error("❌ Save error:", e);
             }
@@ -600,8 +593,7 @@
                 userId = user.user.uid;
                 console.log("✅ Authenticated as:", userId);
                 
-                deviceId = getOrCreateDeviceId();
-                document.getElementById("deviceInfo").textContent = `📱 Shared Tracker | Synced`;
+                document.getElementById("deviceInfo").textContent = `📱 Shared Tracker | All Browsers Synced`;
                 document.getElementById("authStatus").textContent = "🟢 Synced";
                 document.getElementById("authStatus").style.background = "rgba(16, 185, 129, 0.1)";
                 document.getElementById("authStatus").style.color = "var(--color-success)";
@@ -615,7 +607,6 @@
                 }
             } catch (error) {
                 console.error("❌ Auth error:", error);
-                deviceId = getOrCreateDeviceId();
                 document.getElementById("authStatus").textContent = "⚠️ Offline Mode";
             }
         }
@@ -736,9 +727,7 @@
 
             trackingData.push(stats);
             await saveToFirebase();
-            updateHistoryTable();
-            updateQuickStats();
-            updateTrendChart();
+            // Real-time listener (onValue) will handle UI updates automatically
             showMessage("✅ Snapshot saved to cloud!", "success");
         }
 
@@ -870,14 +859,12 @@
 
             settings = { ...settings, interval, apiKey };
             
-            if (deviceId) {
-                try {
-                    const settingsRef = ref(db, `settings/${deviceId}`);
-                    await set(settingsRef, settings);
-                    showMessage("✅ Settings saved!", "success");
-                } catch (e) {
-                    showMessage("Settings save failed", "error");
-                }
+            try {
+                const settingsRef = ref(db, `settings/${DEVICE_ID}`);
+                await set(settingsRef, settings);
+                showMessage("✅ Settings saved!", "success");
+            } catch (e) {
+                showMessage("Settings save failed", "error");
             }
 
             if (settings.autoTrack) {
@@ -887,9 +874,8 @@
         }
 
         async function loadSettings() {
-            if (!deviceId) return;
             try {
-                const settingsRef = ref(db, `settings/${deviceId}`);
+                const settingsRef = ref(db, `settings/${DEVICE_ID}`);
                 onValue(settingsRef, (snapshot) => {
                     if (snapshot.exists()) {
                         settings = snapshot.val();
@@ -940,13 +926,11 @@
         async function clearAllData() {
             if (!confirm("Delete all tracking data?")) return;
             trackingData = [];
-            if (deviceId) {
-                try {
-                    const trackerRef = ref(db, `trackers/${deviceId}`);
-                    await remove(trackerRef);
-                } catch (e) {
-                    console.error("Delete error:", e);
-                }
+            try {
+                const trackerRef = ref(db, `trackers/${DEVICE_ID}`);
+                await remove(trackerRef);
+            } catch (e) {
+                console.error("Delete error:", e);
             }
             updateHistoryTable();
             updateQuickStats();
