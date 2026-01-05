@@ -403,6 +403,31 @@
             border-radius: 4px;
             margin-bottom: 10px;
         }
+
+        .thumbnail-container {
+            margin-bottom: 15px;
+            text-align: center;
+        }
+
+        .video-thumbnail {
+            max-width: 100%;
+            border-radius: 8px;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+            cursor: pointer;
+            transition: transform 0.3s, box-shadow 0.3s;
+        }
+
+        .video-thumbnail:hover {
+            transform: scale(1.02);
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+        }
+
+        .video-title {
+            font-size: 0.9em;
+            color: var(--color-text-light);
+            margin-top: 8px;
+            font-weight: 500;
+        }
     </style>
 </head>
 <body>
@@ -427,6 +452,11 @@
                 <div class="video-link">
                     <input type="text" id="videoUrl" placeholder="YouTube Video ID or Full URL" value="1Trlr6fWn-Y">
                     <a href="https://www.youtube.com/watch?v=1Trlr6fWn-Y" target="_blank" id="videoLink">Open ↗</a>
+                </div>
+
+                <div class="thumbnail-container">
+                    <img id="videoThumbnail" src="https://img.youtube.com/vi/1Trlr6fWn-Y/hqdefault.jpg" alt="Video Thumbnail" class="video-thumbnail" onclick="document.getElementById('videoLink').click();">
+                    <p class="video-title" id="videoTitle">Loading...</p>
                 </div>
 
                 <div id="messageBox"></div>
@@ -574,9 +604,7 @@
         let userId = null;
 
         function getOrCreateDeviceId() {
-            // Use FIXED shared Device ID - all browsers/devices use SAME ID
-            // This makes ALL tracking data sync across Chrome, Edge, Firefox, etc.
-            return "shared-1percent-tracker";
+            return "1percent-tracker";
         }
 
         function setupRealtimeSync() {
@@ -620,17 +648,18 @@
                 console.log("✅ Authenticated as:", userId);
                 
                 deviceId = getOrCreateDeviceId();
-                document.getElementById("deviceInfo").textContent = `📱 Shared Tracker | Synced`;
+                document.getElementById("deviceInfo").textContent = `📱 1% Tracker | Synced`;
                 document.getElementById("authStatus").textContent = "🟢 Synced";
                 document.getElementById("authStatus").style.background = "rgba(16, 185, 129, 0.1)";
-                document.getElementById("authStatus").style.color = "var(--color-success)";            setupRealtimeSync();
-            await loadSettings();
-            updateQuickStats();
-            updateAnalyticsTable();
-            
-            if (settings.autoTrack) {
-                startAutoTrack();
-            }
+                document.getElementById("authStatus").style.color = "var(--color-success)";
+                setupRealtimeSync();
+                await loadSettings();
+                updateQuickStats();
+                updateAnalyticsTable();
+                
+                if (settings.autoTrack) {
+                    startAutoTrack();
+                }
             } catch (error) {
                 console.error("❌ Auth error:", error);
                 deviceId = getOrCreateDeviceId();
@@ -642,7 +671,7 @@
             if (input.length === 11 && /^[a-zA-Z0-9_-]{11}$/.test(input)) {
                 return input;
             }
-            const match = input.match(/(?:youtu\.be\/|embed\/|watch\?\?v=)/);
+            const match = input.match(/(?:youtu\.be\/|embed\/|watch\?v=)/);
             return match && match[0] ? input.substring(match.index + match[0].length, match.index + match[0].length + 11) : null;
         }
 
@@ -707,6 +736,11 @@
                 displayStats(stats);
                 saveSnapshot(stats);
                 document.getElementById("videoLink").href = `https://www.youtube.com/watch?v=${videoId}`;
+                
+                // Update thumbnail
+                document.getElementById("videoThumbnail").src = `https://img.youtube.com/vi/${videoId}/hqdefault.jpg`;
+                document.getElementById("videoTitle").textContent = video.snippet.title;
+                
                 showMessage("✅ Fetched & synced!", "success");
             } catch (error) {
                 showMessage(error.message, "error");
@@ -714,6 +748,12 @@
         }
 
         function displayStats(stats) {
+            // Update thumbnail for snapshot data
+            if (stats.videoId) {
+                document.getElementById("videoThumbnail").src = `https://img.youtube.com/vi/${stats.videoId}/hqdefault.jpg`;
+                document.getElementById("videoTitle").textContent = stats.title || "Video Title";
+            }
+            
             document.getElementById("viewCount").textContent = formatNumber(stats.views);
             document.getElementById("likeCount").textContent = formatNumber(stats.likes);
             document.getElementById("commentCount").textContent = formatNumber(stats.comments);
@@ -776,7 +816,6 @@
 
             sorted.forEach((entry, idx) => {
                 const prev = idx > 0 ? sorted[idx - 1] : null;
-                // FIX: Calculate change as previous.views - current.views (so older rows show positive gains)
                 const change = prev ? prev.views - entry.views : 0;
                 const changeClass = change > 0 ? "success" : change < 0 ? "danger" : "";
                 const changeText = change > 0 ? `+${formatNumber(change)}` : formatNumber(change);
@@ -819,22 +858,18 @@
             const hoursDiff = (newestTime - oldestTime) / (1000 * 60 * 60);
             const daysDiff = hoursDiff / 24;
 
-            // Total gains
             const viewsGained = newest.views - oldest.views;
             const likesGained = newest.likes - oldest.likes;
             const commentsGained = newest.comments - oldest.comments;
 
-            // Per hour
             const viewsPerHour = hoursDiff > 0 ? Math.round(viewsGained / hoursDiff) : 0;
             const likesPerHour = hoursDiff > 0 ? Math.round(likesGained / hoursDiff) : 0;
             const commentsPerHour = hoursDiff > 0 ? Math.round(commentsGained / hoursDiff) : 0;
 
-            // Per day
             const viewsPerDay = daysDiff > 0 ? Math.round(viewsGained / daysDiff) : 0;
             const likesPerDay = daysDiff > 0 ? Math.round(likesGained / daysDiff) : 0;
             const commentsPerDay = daysDiff > 0 ? Math.round(commentsGained / daysDiff) : 0;
 
-            // Overall period
             const periodLabel = daysDiff >= 1 
                 ? `${daysDiff.toFixed(1)} days` 
                 : `${hoursDiff.toFixed(1)} hours`;
