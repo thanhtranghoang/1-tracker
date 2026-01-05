@@ -555,20 +555,9 @@
         let userId = null;
 
         function getOrCreateDeviceId() {
-            const key = "trackerDeviceId";
-            let id = localStorage.getItem(key);
-            
-            if (!id) {
-                // Use ONLY random part (no timestamp) so same browser always gets same Device ID
-                id = `device-${Math.random().toString(36).substr(2, 20)}`;
-                try {
-                    localStorage.setItem(key, id);
-                    console.log("✅ Created new Device ID:", id);
-                } catch (e) {
-                    console.warn("localStorage unavailable");
-                }
-            }
-            return id;
+            // Use FIXED shared Device ID - all browsers/devices use SAME ID
+            // This makes ALL tracking data sync across Chrome, Edge, Firefox, etc.
+            return "shared-1percent-tracker";
         }
 
         function setupRealtimeSync() {
@@ -612,7 +601,7 @@
                 console.log("✅ Authenticated as:", userId);
                 
                 deviceId = getOrCreateDeviceId();
-                document.getElementById("deviceInfo").textContent = `📱 Device: ${deviceId.substring(0, 15)}... | Synced`;
+                document.getElementById("deviceInfo").textContent = `📱 Shared Tracker | Synced`;
                 document.getElementById("authStatus").textContent = "🟢 Synced";
                 document.getElementById("authStatus").style.background = "rgba(16, 185, 129, 0.1)";
                 document.getElementById("authStatus").style.color = "var(--color-success)";
