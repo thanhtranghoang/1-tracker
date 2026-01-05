@@ -411,7 +411,7 @@
             <div class="header-content">
                 <div>
                     <h1>1% Tracker</h1>
-                    <p class="subtitle">Real-time sync across all browsers 🔄</p>
+                    <p class="subtitle">Track voting statistics with cloud sync</p>
                 </div>
                 <div class="auth-badge" id="authStatus">🔄 Syncing...</div>
             </div>
@@ -522,12 +522,31 @@
                 <div class="no-data" id="noDataMessage">No tracking data yet. Click Fetch Now to start!</div>
             </div>
         </div>
+
+        <div class="card">
+            <h2>📈 Growth Analytics</h2>
+            <div class="table-container">
+                <table id="analyticsTable" style="display: none;">
+                    <thead>
+                        <tr>
+                            <th>Period</th>
+                            <th>Views Gained</th>
+                            <th>Avg per Hour</th>
+                            <th>Likes Gained</th>
+                            <th>Comments Gained</th>
+                        </tr>
+                    </thead>
+                    <tbody id="analyticsBody"></tbody>
+                </table>
+                <div class="no-data" id="noAnalyticsMessage">No analytics available yet. Need at least 2 snapshots!</div>
+            </div>
+        </div>
     </div>
 
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
-        import { getDatabase, ref, onValue, set, remove } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-database.js";
+        import { getDatabase, ref, onValue, push, set, remove } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-database.js";
         import { getAuth, signInAnonymously } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
 
         const firebaseConfig = {
@@ -546,23 +565,28 @@
         const db = getDatabase(app);
 
         const APIBASEURL = "https://www.googleapis.com/youtube/v3/videos";
-        const DEVICE_ID = "shared-1percent-tracker";
 
         let trackingData = [];
         let autoTrackInterval = null;
         let settings = { autoTrack: false, interval: 5, apiKey: "" };
         let trendChart = null;
+        let deviceId = null;
         let userId = null;
 
+        function getOrCreateDeviceId() {
+            // Use FIXED shared Device ID - all browsers/devices use SAME ID
+            // This makes ALL tracking data sync across Chrome, Edge, Firefox, etc.
+            return "shared-1percent-tracker";
+        }
+
         function setupRealtimeSync() {
-            // Setup PERSISTENT listener that updates whenever Firebase changes
-            const trackerRef = ref(db, `trackers/${DEVICE_ID}`);
+            const trackerRef = ref(db, `trackers/${deviceId}`);
             
             onValue(trackerRef, (snapshot) => {
                 if (snapshot.exists()) {
                     const data = snapshot.val();
                     trackingData = data.records || [];
-                    console.log("✅ Real-time update from Firebase:", trackingData.length, "records");
+                    console.log("✅ Synced data from Firebase Realtime DB:", trackingData.length, "records");
                     updateHistoryTable();
                     updateQuickStats();
                     updateTrendChart();
@@ -573,15 +597,17 @@
         }
 
         async function saveToFirebase() {
+            if (!deviceId) return;
+            
             try {
-                const trackerRef = ref(db, `trackers/${DEVICE_ID}`);
+                const trackerRef = ref(db, `trackers/${deviceId}`);
                 await set(trackerRef, {
                     records: trackingData,
                     lastUpdate: new Date().toISOString(),
-                    deviceId: DEVICE_ID,
+                    deviceId: deviceId,
                     userId: userId
                 });
-                console.log("✅ Saved to Firebase:", trackingData.length, "records");
+                console.log("✅ Saved to Firebase Realtime DB:", trackingData.length, "records");
             } catch (e) {
                 console.error("❌ Save error:", e);
             }
@@ -593,20 +619,21 @@
                 userId = user.user.uid;
                 console.log("✅ Authenticated as:", userId);
                 
-                document.getElementById("deviceInfo").textContent = `📱 Shared Tracker | All Browsers Synced`;
+                deviceId = getOrCreateDeviceId();
+                document.getElementById("deviceInfo").textContent = `📱 Shared Tracker | Synced`;
                 document.getElementById("authStatus").textContent = "🟢 Synced";
                 document.getElementById("authStatus").style.background = "rgba(16, 185, 129, 0.1)";
-                document.getElementById("authStatus").style.color = "var(--color-success)";
-                
-                setupRealtimeSync();
-                await loadSettings();
-                updateQuickStats();
-                
-                if (settings.autoTrack) {
-                    startAutoTrack();
-                }
+                document.getElementById("authStatus").style.color = "var(--color-success)";            setupRealtimeSync();
+            await loadSettings();
+            updateQuickStats();
+            updateAnalyticsTable();
+            
+            if (settings.autoTrack) {
+                startAutoTrack();
+            }
             } catch (error) {
                 console.error("❌ Auth error:", error);
+                deviceId = getOrCreateDeviceId();
                 document.getElementById("authStatus").textContent = "⚠️ Offline Mode";
             }
         }
@@ -727,7 +754,9 @@
 
             trackingData.push(stats);
             await saveToFirebase();
-            // Real-time listener (onValue) will handle UI updates automatically
+            updateHistoryTable();
+            updateQuickStats();
+            updateTrendChart();
             showMessage("✅ Snapshot saved to cloud!", "success");
         }
 
@@ -747,6 +776,7 @@
 
             sorted.forEach((entry, idx) => {
                 const prev = idx > 0 ? sorted[idx - 1] : null;
+                // FIX: Calculate change as previous.views - current.views (so older rows show positive gains)
                 const change = prev ? prev.views - entry.views : 0;
                 const changeClass = change > 0 ? "success" : change < 0 ? "danger" : "";
                 const changeText = change > 0 ? `+${formatNumber(change)}` : formatNumber(change);
@@ -762,6 +792,86 @@
                     </tr>
                 `);
             });
+
+            table.style.display = "table";
+            noDataMsg.style.display = "none";
+            updateAnalyticsTable();
+        }
+
+        function updateAnalyticsTable() {
+            const tbody = document.getElementById("analyticsBody");
+            const table = document.getElementById("analyticsTable");
+            const noDataMsg = document.getElementById("noAnalyticsMessage");
+
+            if (trackingData.length < 2) {
+                table.style.display = "none";
+                noDataMsg.style.display = "block";
+                return;
+            }
+
+            tbody.innerHTML = "";
+            const sorted = [...trackingData].sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
+            const oldest = sorted[0];
+            const newest = sorted[sorted.length - 1];
+
+            const oldestTime = new Date(oldest.timestamp);
+            const newestTime = new Date(newest.timestamp);
+            const hoursDiff = (newestTime - oldestTime) / (1000 * 60 * 60);
+            const daysDiff = hoursDiff / 24;
+
+            // Total gains
+            const viewsGained = newest.views - oldest.views;
+            const likesGained = newest.likes - oldest.likes;
+            const commentsGained = newest.comments - oldest.comments;
+
+            // Per hour
+            const viewsPerHour = hoursDiff > 0 ? Math.round(viewsGained / hoursDiff) : 0;
+            const likesPerHour = hoursDiff > 0 ? Math.round(likesGained / hoursDiff) : 0;
+            const commentsPerHour = hoursDiff > 0 ? Math.round(commentsGained / hoursDiff) : 0;
+
+            // Per day
+            const viewsPerDay = daysDiff > 0 ? Math.round(viewsGained / daysDiff) : 0;
+            const likesPerDay = daysDiff > 0 ? Math.round(likesGained / daysDiff) : 0;
+            const commentsPerDay = daysDiff > 0 ? Math.round(commentsGained / daysDiff) : 0;
+
+            // Overall period
+            const periodLabel = daysDiff >= 1 
+                ? `${daysDiff.toFixed(1)} days` 
+                : `${hoursDiff.toFixed(1)} hours`;
+
+            tbody.insertAdjacentHTML("beforeend", `
+                <tr>
+                    <td><strong>📊 Overall (${periodLabel})</strong></td>
+                    <td><span class="badge success">+${formatNumber(viewsGained)}</span></td>
+                    <td>${formatNumber(viewsPerHour)}/hr</td>
+                    <td><span class="badge success">+${formatNumber(likesGained)}</span></td>
+                    <td><span class="badge success">+${formatNumber(commentsGained)}</span></td>
+                </tr>
+            `);
+
+            if (hoursDiff >= 1) {
+                tbody.insertAdjacentHTML("beforeend", `
+                    <tr>
+                        <td><strong>⏱️ Per Hour Average</strong></td>
+                        <td><span class="badge">${formatNumber(viewsPerHour)}</span></td>
+                        <td>${(viewsPerHour).toFixed(0)}/hr</td>
+                        <td><span class="badge">${formatNumber(likesPerHour)}</span></td>
+                        <td><span class="badge">${formatNumber(commentsPerHour)}</span></td>
+                    </tr>
+                `);
+            }
+
+            if (daysDiff >= 1) {
+                tbody.insertAdjacentHTML("beforeend", `
+                    <tr>
+                        <td><strong>📅 Per Day Average</strong></td>
+                        <td><span class="badge warning">+${formatNumber(viewsPerDay)}</span></td>
+                        <td>${formatNumber(viewsPerDay)}/day</td>
+                        <td><span class="badge warning">+${formatNumber(likesPerDay)}</span></td>
+                        <td><span class="badge warning">+${formatNumber(commentsPerDay)}</span></td>
+                    </tr>
+                `);
+            }
 
             table.style.display = "table";
             noDataMsg.style.display = "none";
@@ -859,12 +969,14 @@
 
             settings = { ...settings, interval, apiKey };
             
-            try {
-                const settingsRef = ref(db, `settings/${DEVICE_ID}`);
-                await set(settingsRef, settings);
-                showMessage("✅ Settings saved!", "success");
-            } catch (e) {
-                showMessage("Settings save failed", "error");
+            if (deviceId) {
+                try {
+                    const settingsRef = ref(db, `settings/${deviceId}`);
+                    await set(settingsRef, settings);
+                    showMessage("✅ Settings saved!", "success");
+                } catch (e) {
+                    showMessage("Settings save failed", "error");
+                }
             }
 
             if (settings.autoTrack) {
@@ -874,8 +986,9 @@
         }
 
         async function loadSettings() {
+            if (!deviceId) return;
             try {
-                const settingsRef = ref(db, `settings/${DEVICE_ID}`);
+                const settingsRef = ref(db, `settings/${deviceId}`);
                 onValue(settingsRef, (snapshot) => {
                     if (snapshot.exists()) {
                         settings = snapshot.val();
@@ -926,11 +1039,13 @@
         async function clearAllData() {
             if (!confirm("Delete all tracking data?")) return;
             trackingData = [];
-            try {
-                const trackerRef = ref(db, `trackers/${DEVICE_ID}`);
-                await remove(trackerRef);
-            } catch (e) {
-                console.error("Delete error:", e);
+            if (deviceId) {
+                try {
+                    const trackerRef = ref(db, `trackers/${deviceId}`);
+                    await remove(trackerRef);
+                } catch (e) {
+                    console.error("Delete error:", e);
+                }
             }
             updateHistoryTable();
             updateQuickStats();
