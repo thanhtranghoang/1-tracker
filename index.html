@@ -411,7 +411,7 @@
             <div class="header-content">
                 <div>
                     <h1>1% Tracker</h1>
-                    <p class="subtitle">Track voting statistics with cloud sync (Realtime DB)</p>
+                    <p class="subtitle">Track voting statistics with cloud sync</p>
                 </div>
                 <div class="auth-badge" id="authStatus">🔄 Syncing...</div>
             </div>
@@ -559,7 +559,8 @@
             let id = localStorage.getItem(key);
             
             if (!id) {
-                id = `device-${Math.random().toString(36).substr(2, 9)}-${Date.now()}`;
+                // Use ONLY random part (no timestamp) so same browser always gets same Device ID
+                id = `device-${Math.random().toString(36).substr(2, 20)}`;
                 try {
                     localStorage.setItem(key, id);
                     console.log("✅ Created new Device ID:", id);
