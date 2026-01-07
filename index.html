@@ -898,6 +898,20 @@
                     </tr>
                 `);
             });
+                    
+         tbody.insertAdjacentHTML('beforeend', `
+                <tr style="background: #f0f9ff; font-weight: bold; border-top: 2px solid var(--color-secondary);">
+                    <td><strong>📊 TOTAL</strong></td>
+                    <td><span class="badge success">${formatNumber(totalViews)}</span></td>
+                    <td>-</td>
+                    <td><span class="badge success">${formatNumber(totalLikes)}</span></td>
+                    <td><span class="badge success">${formatNumber(totalComments)}</span></td>
+                </tr>
+            `);
+
+            table.style.display = 'table';
+            noDataMsg.style.display = 'none';
+        }
 
             table.style.display = 'table';
             noDataMsg.style.display = 'none';
