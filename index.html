@@ -846,7 +846,7 @@
             updateAnalyticsTable();
         }
 
-                function updateAnalyticsTable() {
+                       function updateAnalyticsTable() {
             const tbody = document.getElementById('analyticsBody');
             const table = document.getElementById('analyticsTable');
             const noDataMsg = document.getElementById('noAnalyticsMessage');
@@ -872,6 +872,8 @@
 
             // Calculate daily gains for each day
             const dates = Object.keys(dataByDate);
+            let totalViews = 0, totalLikes = 0, totalComments = 0;
+            
             dates.forEach((date) => {
                 const dayData = dataByDate[date];
                 const firstEntry = dayData[0];
@@ -880,6 +882,10 @@
                 const viewsGained = lastEntry.views - firstEntry.views;
                 const likesGained = lastEntry.likes - firstEntry.likes;
                 const commentsGained = lastEntry.comments - firstEntry.comments;
+
+                totalViews += viewsGained;
+                totalLikes += likesGained;
+                totalComments += commentsGained;
 
                 // Calculate hours elapsed during this day
                 const firstTime = new Date(firstEntry.timestamp);
@@ -898,8 +904,9 @@
                     </tr>
                 `);
             });
-                    
-         tbody.insertAdjacentHTML('beforeend', `
+
+            // Add total row at the end
+            tbody.insertAdjacentHTML('beforeend', `
                 <tr style="background: #f0f9ff; font-weight: bold; border-top: 2px solid var(--color-secondary);">
                     <td><strong>📊 TOTAL</strong></td>
                     <td><span class="badge success">${formatNumber(totalViews)}</span></td>
