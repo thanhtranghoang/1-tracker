@@ -846,81 +846,62 @@
             updateAnalyticsTable();
         }
 
-        function updateAnalyticsTable() {
-            const tbody = document.getElementById("analyticsBody");
-            const table = document.getElementById("analyticsTable");
-            const noDataMsg = document.getElementById("noAnalyticsMessage");
+                function updateAnalyticsTable() {
+            const tbody = document.getElementById('analyticsBody');
+            const table = document.getElementById('analyticsTable');
+            const noDataMsg = document.getElementById('noAnalyticsMessage');
 
             if (trackingData.length < 2) {
-                table.style.display = "none";
-                noDataMsg.style.display = "block";
+                table.style.display = 'none';
+                noDataMsg.style.display = 'block';
                 return;
             }
 
-            tbody.innerHTML = "";
+            tbody.innerHTML = '';
             const sorted = [...trackingData].sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
-            const oldest = sorted[0];
-            const newest = sorted[sorted.length - 1];
 
-            const oldestTime = new Date(oldest.timestamp);
-            const newestTime = new Date(newest.timestamp);
-            const hoursDiff = (newestTime - oldestTime) / (1000 * 60 * 60);
-            const daysDiff = hoursDiff / 24;
+            // Group data by date (M/D format like 1/5, 1/6, 1/7)
+            const dataByDate = {};
+            sorted.forEach(entry => {
+                const date = new Date(entry.timestamp).toLocaleDateString('en-US', { month: 'numeric', day: 'numeric' });
+                if (!dataByDate[date]) {
+                    dataByDate[date] = [];
+                }
+                dataByDate[date].push(entry);
+            });
 
-            const viewsGained = newest.views - oldest.views;
-            const likesGained = newest.likes - oldest.likes;
-            const commentsGained = newest.comments - oldest.comments;
+            // Calculate daily gains for each day
+            const dates = Object.keys(dataByDate);
+            dates.forEach((date) => {
+                const dayData = dataByDate[date];
+                const firstEntry = dayData[0];
+                const lastEntry = dayData[dayData.length - 1];
 
-            const viewsPerHour = hoursDiff > 0 ? Math.round(viewsGained / hoursDiff) : 0;
-            const likesPerHour = hoursDiff > 0 ? Math.round(likesGained / hoursDiff) : 0;
-            const commentsPerHour = hoursDiff > 0 ? Math.round(commentsGained / hoursDiff) : 0;
+                const viewsGained = lastEntry.views - firstEntry.views;
+                const likesGained = lastEntry.likes - firstEntry.likes;
+                const commentsGained = lastEntry.comments - firstEntry.comments;
 
-            const viewsPerDay = daysDiff > 0 ? Math.round(viewsGained / daysDiff) : 0;
-            const likesPerDay = daysDiff > 0 ? Math.round(likesGained / daysDiff) : 0;
-            const commentsPerDay = daysDiff > 0 ? Math.round(commentsGained / daysDiff) : 0;
+                // Calculate hours elapsed during this day
+                const firstTime = new Date(firstEntry.timestamp);
+                const lastTime = new Date(lastEntry.timestamp);
+                const hoursDiff = (lastTime - firstTime) / (1000 * 60 * 60);
 
-            const periodLabel = daysDiff >= 1 
-                ? `${daysDiff.toFixed(1)} days` 
-                : `${hoursDiff.toFixed(1)} hours`;
+                const viewsPerHour = hoursDiff > 0 ? Math.round(viewsGained / hoursDiff) : viewsGained;
 
-            tbody.insertAdjacentHTML("beforeend", `
-                <tr>
-                    <td><strong>📊 Overall (${periodLabel})</strong></td>
-                    <td><span class="badge success">+${formatNumber(viewsGained)}</span></td>
-                    <td>${formatNumber(viewsPerHour)}/hr</td>
-                    <td><span class="badge success">+${formatNumber(likesGained)}</span></td>
-                    <td><span class="badge success">+${formatNumber(commentsGained)}</span></td>
-                </tr>
-            `);
-
-            if (hoursDiff >= 1) {
-                tbody.insertAdjacentHTML("beforeend", `
+                tbody.insertAdjacentHTML('beforeend', `
                     <tr>
-                        <td><strong>⏱️ Per Hour Average</strong></td>
-                        <td><span class="badge">${formatNumber(viewsPerHour)}</span></td>
-                        <td>${(viewsPerHour).toFixed(0)}/hr</td>
-                        <td><span class="badge">${formatNumber(likesPerHour)}</span></td>
-                        <td><span class="badge">${formatNumber(commentsPerHour)}</span></td>
+                        <td><strong>📅 ${date}</strong></td>
+                        <td><span class="badge success">${formatNumber(viewsGained)}</span></td>
+                        <td>${formatNumber(viewsPerHour)}/hr</td>
+                        <td><span class="badge success">${formatNumber(likesGained)}</span></td>
+                        <td><span class="badge success">${formatNumber(commentsGained)}</span></td>
                     </tr>
                 `);
-            }
+            });
 
-            if (daysDiff >= 1) {
-                tbody.insertAdjacentHTML("beforeend", `
-                    <tr>
-                        <td><strong>📅 Per Day Average</strong></td>
-                        <td><span class="badge warning">+${formatNumber(viewsPerDay)}</span></td>
-                        <td>${formatNumber(viewsPerDay)}/day</td>
-                        <td><span class="badge warning">+${formatNumber(likesPerDay)}</span></td>
-                        <td><span class="badge warning">+${formatNumber(commentsPerDay)}</span></td>
-                    </tr>
-                `);
-            }
-
-            table.style.display = "table";
-            noDataMsg.style.display = "none";
+            table.style.display = 'table';
+            noDataMsg.style.display = 'none';
         }
-
         function updateQuickStats() {
             document.getElementById("snapshotCount").textContent = trackingData.length;
             if (trackingData.length > 0) {
